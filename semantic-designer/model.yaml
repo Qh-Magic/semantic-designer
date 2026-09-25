@@ -1,0 +1,69 @@
+{
+  "model_id": "sales_universe",
+  "version": 1,
+  "status": "approved",
+  "title": "Sales Universe",
+  "models": [
+    {
+      "id": "orders",
+      "table": "mart.fct_orders",
+      "grain": "order_id",
+      "columns": [
+        "order_id",
+        "customer_id",
+        "net_amount",
+        "order_date"
+      ]
+    },
+    {
+      "id": "customers",
+      "table": "mart.dim_customers",
+      "grain": "customer_id",
+      "columns": [
+        "customer_id",
+        "region"
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "orders_customer",
+      "from": "orders.customer_id",
+      "to": "customers.customer_id",
+      "type": "many_to_one"
+    }
+  ],
+  "metrics": [
+    {
+      "id": "net_sales",
+      "label": "Net Sales",
+      "model": "orders",
+      "expression": "SUM(net_amount)",
+      "aggregation": "sum",
+      "dimensions": [
+        "orders.order_date",
+        "customers.region"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "id": "sales",
+      "label": "Sales",
+      "models": [
+        "orders",
+        "customers"
+      ],
+      "metrics": [
+        "net_sales"
+      ]
+    }
+  ],
+  "audit": {
+    "last_validation": null,
+    "reviewers": [
+      "smoke"
+    ],
+    "published_version": 1
+  }
+}

@@ -1,0 +1,18 @@
+<!doctype html><meta charset="utf-8"><title>Semantic Designer</title>
+<style>body{font:15px system-ui;max-width:1100px;margin:30px auto;padding:0 18px;color:#172033}button{padding:8px 12px;margin:4px;border:1px solid #b7c3d8;border-radius:5px;background:white;cursor:pointer}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}textarea{width:100%;height:360px;font:13px monospace}input,select{padding:5px;margin:3px}pre{background:#f4f6fa;padding:14px;min-height:100px;overflow:auto}.ok{color:#087443}.err{color:#a21d31}</style>
+<h1>Semantic Designer</h1><p>本地編輯、驗證、審核與發布 Cube 語意模型。</p>
+<button onclick="load()">重新載入</button><button onclick="save()">儲存並驗證</button><button onclick="review()">送審</button><button onclick="approve()">核准</button><button onclick="publish()">發布</button><button onclick="exportCube()">檢視 Cube YAML</button>
+<div class="grid"><section><h2>無碼模型編輯</h2><div id="forms"></div><h3>進階文件</h3><textarea id="doc"></textarea></section><section><h2>Validation / release</h2><pre id="out">Loading…</pre></section></div>
+<script>
+const doc=document.querySelector('#doc'),out=document.querySelector('#out'),forms=document.querySelector('#forms');let model;
+async function api(path,opts){const r=await fetch(path,opts);const j=await r.json();if(!r.ok)throw j;return j}
+function show(x){out.textContent=JSON.stringify(x,null,2);out.className=x.valid===false?'err':x.valid?'ok':''}
+function sync(){doc.value=JSON.stringify(model,null,2)}
+function render(){forms.innerHTML='';model.models.forEach((m,i)=>{const row=document.createElement('div');row.innerHTML=`<label>資料表 <input value="${m.table}" onchange="model.models[${i}].table=this.value;sync()"></label> <b>${m.id}</b>`;forms.append(row)});const r=document.createElement('div');r.innerHTML='<h3>關聯基數</h3>'+model.relationships.map((x,i)=>`<label>${x.id} <select onchange="model.relationships[${i}].type=this.value;sync()"><option ${x.type==='many_to_one'?'selected':''}>many_to_one</option><option ${x.type==='one_to_many'?'selected':''}>one_to_many</option><option ${x.type==='one_to_one'?'selected':''}>one_to_one</option></select> ${x.from} → ${x.to}</label><br>`).join('');forms.append(r)}
+async function load(){try{model=await api('/api/model');sync();render();show(await api('/api/validation'))}catch(e){show(e)}}
+async function save(){try{model=JSON.parse(doc.value);const x=await api('/api/model',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(model)});model=x;sync();render();show(await api('/api/validation'))}catch(e){show(e)}}
+async function review(){try{await save();const x=await api('/api/review',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});model=x;sync();show(x)}catch(e){show(e)}}
+async function approve(){try{const x=await api('/api/approve',{method:'POST'});model=x;sync();show(x)}catch(e){show(e)}}
+async function publish(){try{const x=await api('/api/publish',{method:'POST'});model=x;sync();show(x)}catch(e){show(e)}}
+async function exportCube(){try{show(await api('/api/cube'))}catch(e){show(e)}}load();
+</script>
