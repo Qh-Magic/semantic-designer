@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-Hant">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Universal Semantic Layer 資料流程架構</title>
+<style>
+body{margin:0;background:#f5f7fb;color:#152238;font:16px system-ui,-apple-system,"PingFang TC",sans-serif}main{max-width:1500px;margin:0 auto;padding:28px}h1{margin:0 0 8px;font-size:28px}p{color:#52627a;margin-top:0}.canvas{background:#fff;border:1px solid #d8e0ec;border-radius:16px;padding:18px;overflow:auto;box-shadow:0 8px 26px #1e3a5f12}svg{min-width:1120px;width:100%;height:auto}.legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;color:#52627a}.legend span{display:inline-flex;align-items:center;gap:7px}.dot{width:12px;height:12px;border-radius:4px;display:inline-block}.note{margin-top:18px;padding:14px 16px;background:#eef5ff;border-left:4px solid #3678d4;border-radius:8px}.small{font-size:13px;color:#65758c}
+</style>
+<main>
+<h1>Airflow + dbt + Iceberg + Trino + AtScale/Cube 資料流程</h1>
+<p>一份 Git semantic contract，產生兩個可替換 runtime：AtScale 面向企業 Universal Semantic Layer；Cube 面向自管與 embedded analytics。</p>
+<div class="canvas">
+<svg viewBox="0 0 1400 850" role="img" aria-label="資料流程架構圖">
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill="#57708f"/></marker><marker id="dash" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto"><path d="M0,0 L10,3 L0,6 Z" fill="#8b9ab0"/></marker></defs>
+<rect x="25" y="30" width="1350" height="215" rx="18" fill="#eef4fb" stroke="#b9cbe0"/><text x="50" y="65" font-size="22" font-weight="700" fill="#24517d">資料平面：Data Plane</text>
+<rect x="55" y="95" width="190" height="105" rx="12" fill="#fff" stroke="#7396ba"/><text x="150" y="132" text-anchor="middle" font-weight="700">來源資料</text><text x="150" y="158" text-anchor="middle">Parquet / CDC</text><text x="150" y="181" text-anchor="middle" class="small">landing batches</text>
+<rect x="310" y="95" width="190" height="105" rx="12" fill="#fff" stroke="#7396ba"/><text x="405" y="132" text-anchor="middle" font-weight="700">S3-compatible</text><text x="405" y="158" text-anchor="middle">storage</text><text x="405" y="181" text-anchor="middle" class="small">MinIO / AIStor / alternative</text>
+<rect x="565" y="95" width="190" height="105" rx="12" fill="#fff" stroke="#7396ba"/><text x="660" y="132" text-anchor="middle" font-weight="700">Iceberg</text><text x="660" y="158" text-anchor="middle">tables + snapshots</text><text x="660" y="181" text-anchor="middle" class="small">REST catalog / Polaris</text>
+<rect x="820" y="95" width="190" height="105" rx="12" fill="#fff" stroke="#7396ba"/><text x="915" y="132" text-anchor="middle" font-weight="700">Trino</text><text x="915" y="158" text-anchor="middle">SQL query engine</text><text x="915" y="181" text-anchor="middle" class="small">read / write / serving</text>
+<rect x="1075" y="95" width="245" height="105" rx="12" fill="#fff" stroke="#7396ba"/><text x="1197" y="132" text-anchor="middle" font-weight="700">dbt-trino</text><text x="1197" y="158" text-anchor="middle">staging → marts</text><text x="1197" y="181" text-anchor="middle" class="small">facts / dimensions / tests</text>
+<path d="M245 147H310M500 147H565M755 147H820M1010 147H1075" stroke="#57708f" stroke-width="3" marker-end="url(#arrow)"/>
+<rect x="25" y="275" width="1350" height="190" rx="18" fill="#f5f1ff" stroke="#c7b8e8"/><text x="50" y="310" font-size="22" font-weight="700" fill="#634a9b">控制與契約平面：Control Plane</text>
+<rect x="65" y="340" width="220" height="90" rx="12" fill="#fff" stroke="#9a7dd0"/><text x="175" y="375" text-anchor="middle" font-weight="700">Airflow</text><text x="175" y="402" text-anchor="middle" class="small">orchestrate / retry / release</text>
+<rect x="355" y="340" width="260" height="90" rx="12" fill="#fff" stroke="#9a7dd0"/><text x="485" y="375" text-anchor="middle" font-weight="700">Git semantic contract</text><text x="485" y="402" text-anchor="middle" class="small">metric / join / time / security</text>
+<rect x="685" y="340" width="260" height="90" rx="12" fill="#fff" stroke="#9a7dd0"/><text x="815" y="375" text-anchor="middle" font-weight="700">CI validation + review</text><text x="815" y="402" text-anchor="middle" class="small">golden metrics / approvals</text>
+<rect x="1015" y="340" width="290" height="90" rx="12" fill="#fff" stroke="#9a7dd0"/><text x="1160" y="375" text-anchor="middle" font-weight="700">OpenMetadata</text><text x="1160" y="402" text-anchor="middle" class="small">catalog / glossary / lineage / quality</text>
+<path d="M285 385H355M615 385H685M945 385H1015" stroke="#8b6fc4" stroke-width="3" marker-end="url(#arrow)"/>
+<path d="M175 340V205M485 340V205M815 340V205" stroke="#8b9ab0" stroke-width="2" stroke-dasharray="7 7" marker-end="url(#dash)"/>
+<rect x="25" y="495" width="1350" height="190" rx="18" fill="#fff8ec" stroke="#edc887"/><text x="50" y="530" font-size="22" font-weight="700" fill="#986a17">語意服務平面：Semantic Runtime</text>
+<rect x="120" y="565" width="430" height="90" rx="12" fill="#fff" stroke="#d49d39"/><text x="335" y="600" text-anchor="middle" font-weight="700">AtScale Universal Semantic Layer</text><text x="335" y="627" text-anchor="middle" class="small">Design Center / SML / Git / BI / AI-Link</text>
+<rect x="850" y="565" width="430" height="90" rx="12" fill="#fff" stroke="#d49d39"/><text x="1065" y="600" text-anchor="middle" font-weight="700">Cube embedded runtime</text><text x="1065" y="627" text-anchor="middle" class="small">cubes / views / API / cache / pre-aggregations</text>
+<path d="M405 200V565M915 200V565M485 430V565M815 430V565" stroke="#57708f" stroke-width="3" marker-end="url(#arrow)"/><path d="M615 385H815" stroke="#8b6fc4" stroke-width="2" stroke-dasharray="7 7" marker-end="url(#dash)"/>
+<rect x="25" y="715" width="1350" height="105" rx="18" fill="#edf9f4" stroke="#a5d5c0"/><text x="50" y="750" font-size="22" font-weight="700" fill="#197054">消費端：Consumers</text>
+<rect x="145" y="770" width="220" height="38" rx="9" fill="#fff" stroke="#65a98d"/><text x="255" y="795" text-anchor="middle">Tableau / Power BI / Excel</text>
+<rect x="455" y="770" width="220" height="38" rx="9" fill="#fff" stroke="#65a98d"/><text x="565" y="795" text-anchor="middle">Python / Notebook / ML</text>
+<rect x="765" y="770" width="220" height="38" rx="9" fill="#fff" stroke="#65a98d"/><text x="875" y="795" text-anchor="middle">自有 SaaS / Embedded BI</text>
+<rect x="1075" y="770" width="180" height="38" rx="9" fill="#fff" stroke="#65a98d"/><text x="1165" y="795" text-anchor="middle">AI agents</text>
+<path d="M335 655V770M1065 655V770" stroke="#57708f" stroke-width="3" marker-end="url(#arrow)"/>
+</svg>
+</div>
+<div class="legend"><span><i class="dot" style="background:#eef4fb"></i>資料平面</span><span><i class="dot" style="background:#f5f1ff"></i>控制與契約</span><span><i class="dot" style="background:#fff8ec"></i>語意 runtime</span><span><i class="dot" style="background:#edf9f4"></i>消費端</span></div>
+<div class="note"><b>核心原則：</b>Git semantic contract 只有一份；AtScale SML 與 Cube YAML 是 runtime binding。OpenMetadata 管治理與發現，不負責產生查詢。</div>
+<p class="small">資料流：Parquet → S3-compatible storage → Iceberg → Trino → dbt marts。發布流：Airflow → CI/review → AtScale/Cube → BI/Python/AI。</p>
+</main>
+</html>
