@@ -173,4 +173,26 @@ class DesignerTests(unittest.TestCase):
             server.load_sml_repository(root)
         self.assertIn("unsupported object_type", str(caught.exception))
 
+    def test_catalog_skill_output_imports_and_exports_ossie(self):
+        source = Path(__file__).parent.parent / "semantic-layer-demo" / "fubon-momo-demo-semantic-layer.yaml"
+        model = server.load_catalog_semantic_layer(source)
+        result = server.validate(model)
+        self.assertTrue(result["valid"], result)
+        self.assertGreaterEqual(len(model["metrics"]), 10)
+        ossie = server.ossie_document(model)
+        self.assertEqual(ossie["version"], "0.3.0.dev0")
+        self.assertTrue(ossie["datasets"])
+        self.assertIn("fields", ossie["datasets"][0])
+        self.assertIn("from_columns", ossie["relationships"][0])
+        self.assertIn("expression", ossie["metrics"][0])
+
+    def test_catalog_skill_output_round_trips_through_sml_repository(self):
+        source = Path(__file__).parent.parent / "semantic-layer-demo" / "fubon-momo-demo-semantic-layer.yaml"
+        model = server.load_catalog_semantic_layer(source)
+        repository = self.tmp / "generated-sml"
+        server.write_sml_repository(model, repository)
+        loaded = server.load_sml_repository(repository)
+        self.assertEqual(len(loaded["models"]), len(model["models"]))
+        self.assertEqual({metric["id"] for metric in loaded["metrics"]}, {metric["id"] for metric in model["metrics"]})
+
 if __name__ == "__main__": unittest.main()

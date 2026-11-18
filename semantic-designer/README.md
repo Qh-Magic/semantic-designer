@@ -19,4 +19,22 @@ Query AST 的第一版要求 `model.name`、`model.release`、`select`、`limit`
 
 `load_sml_repository(path)` 可載入 SML-shaped YAML/JSON object files，解析 `dataset`、`metric`、`model` 等物件並轉成 designer 的 normalized contract。此 dependency-free parser 支援 mappings、scalar lists、list-of-maps 與 JSON（JSON 是 YAML 1.2 subset）；遇到未支援的 YAML 會明確回傳 `SmlParseError`，不會靜默猜測。
 
+## Catalog semantic layer adapters
+
+`load_catalog_semantic_layer(path)` 可讀取 `data-catalog-semantic-layer` skill 產生的 YAML/JSON（包含 `semantic_layer` wrapper），並將 dataset、entity、relationship、measure、metric 與 governance metadata 正規化成 designer model。對於只在 entity 或 relationship 出現、但 catalog 沒有 physical dataset 的名稱，adapter 會建立標記為 `synthetic_from_entity` 的窄 placeholder，避免靜默丟失 join 語意。
+
+`ossie_document(model)` 產生 Apache Ossie `0.3.0.dev0` 的單一 semantic model document；`sml_repository(model)` / `write_sml_repository(model, path)` 產生 AtScale SML-shaped object files。Ossie 核心欄位遵循 vendor-neutral spec，catalog governance 與原始 metadata 則保留在 `nonportable_extensions`；SML 的複雜 metric expression 以 `expression` 與 `nonportable_extensions` 保留，不能假設所有 AtScale runtime 都會自動執行它。
+
+範例：
+
+```python
+from server import load_catalog_semantic_layer, ossie_document, write_sml_repository
+
+model = load_catalog_semantic_layer("../semantic-layer-demo/fubon-momo-demo-semantic-layer.yaml")
+ossie = ossie_document(model)
+write_sml_repository(model, "./generated-sml")
+```
+
+正式導入前仍要用 Ossie schema validator、AtScale SML CLI，以及 golden queries 驗證 metric、grain、many-to-many bridge、PII policy 與 SQL 結果；本 adapter 的目標是可審查的互通 draft，不是 runtime certification。
+
 目前驗證的是模型結構與關聯引用；production gate 還應加入 Trino 查詢、fanout、權限、golden dataset 與 OpenMetadata 同步測試。

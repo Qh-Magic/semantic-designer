@@ -33,6 +33,140 @@ class SmlParseError(ValueError):
     pass
 
 
+def _load_document(path):
+    """Load JSON or YAML without making YAML mandatory for the MVP."""
+    text = Path(path).read_text(encoding="utf-8")
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        try:
+            import yaml
+        except ImportError as error:
+            raise SmlParseError(f"{path}: YAML input requires PyYAML or JSON") from error
+        try:
+            return yaml.safe_load(text)
+        except Exception as error:
+            raise SmlParseError(f"{path}: invalid YAML: {error}") from error
+
+
+def load_catalog_semantic_layer(path):
+    """Normalize the data-catalog-semantic-layer skill output for this designer."""
+    document = _load_document(path)
+    layer = document.get("semantic_layer", document) if isinstance(document, dict) else {}
+    if not isinstance(layer, dict):
+        raise SmlParseError("catalog semantic layer must be a mapping")
+    datasets = []
+    for item in layer.get("datasets", []):
+        name = item.get("name")
+        if not name:
+            continue
+        columns = list(item.get("columns", []))
+        if not columns:
+            columns = [d.get("source_column", "").split(".")[-1] for d in layer.get("dimensions", []) if d.get("source_column", "").startswith(name + ".")]
+        columns = [c if isinstance(c, str) else c.get("name") for c in columns]
+        columns = [c for c in columns if c]
+        primary_key = next((e.get("primary_key") for e in layer.get("entities", []) if e.get("dataset") == name), None)
+        datasets.append({"id": name, "table": item.get("source", name), "grain": item.get("grain", primary_key), "columns": columns, "metadata": item})
+    model_ids = {item["id"] for item in datasets}
+    relationships = []
+    for item in layer.get("relationships", []):
+        if not item.get("from") or not item.get("to"):
+            continue
+        relationships.append({"id": item.get("name", f"relationship_{len(relationships)+1}"), "from": item["from"], "to": item["to"], "type": item.get("type", "many_to_one"), "metadata": item})
+    # The skill intentionally uses business entity names in joins while its
+    # physical datasets may be fact_* names. Keep the logical names stable in
+    # the designer and synthesize a narrow placeholder for entity-only joins.
+    known = {item["id"] for item in datasets}
+    aliases = {item["id"].removeprefix("fact_"): item["id"] for item in datasets}
+    aliases.update({item["id"].removeprefix("dim_"): item["id"] for item in datasets})
+    endpoint_columns = {}
+    for item in relationships:
+        for endpoint in (item["from"], item["to"]):
+            dataset, column = endpoint.split(".", 1)
+            logical = aliases.get(dataset, dataset)
+            endpoint_columns.setdefault(logical, set()).add(column)
+    for item in relationships:
+        for side in ("from", "to"):
+            dataset, column = item[side].split(".", 1)
+            logical = aliases.get(dataset, dataset)
+            item[side] = f"{logical}.{column}"
+    for dataset, columns in endpoint_columns.items():
+        existing = next((item for item in datasets if item["id"] == dataset), None)
+        if existing:
+            existing["columns"] = list(dict.fromkeys(existing.get("columns", []) + sorted(columns)))
+        else:
+            datasets.append({"id": dataset, "table": dataset, "grain": next(iter(columns)), "columns": sorted(columns), "metadata": {"synthetic_from_entity": True}})
+
+    def metric_model(expression):
+        for token in str(expression).replace("(", " ").split():
+            if "." in token:
+                candidate = token.split(".", 1)[0].strip(" ,'")
+                if candidate in model_ids:
+                    return candidate
+        return next(iter(model_ids), None)
+
+    measures = [m for group in (layer.get("measures", {}) or {}).values() for m in (group or [])] if isinstance(layer.get("measures"), dict) else layer.get("measures", [])
+    metrics = []
+    for item in measures + list(layer.get("metrics", [])):
+        name = item.get("name")
+        expression = item.get("expr", item.get("formula", ""))
+        if not name or not expression:
+            continue
+        metrics.append({"id": name, "label": item.get("display_name", name), "model": metric_model(expression), "expression": expression, "aggregation": item.get("type", "custom"), "dimensions": [], "metadata": item})
+    views = [{"id": layer.get("name", "catalog_semantic_layer"), "label": layer.get("display_name", layer.get("name", "Catalog Semantic Layer")), "models": [x["id"] for x in datasets], "metrics": [x["id"] for x in metrics]}]
+    return {"model_id": layer.get("name", "catalog_semantic_layer"), "version": layer.get("version", "0.1.0"), "status": layer.get("status", "draft"), "title": layer.get("display_name", layer.get("name", "Catalog Semantic Layer")), "models": datasets, "relationships": relationships, "metrics": metrics, "views": views, "governance": layer.get("governance", {}), "source_catalog": layer.get("source_catalog", {}), "extensions": {"catalog_semantic_layer": layer}}
+
+
+def _ossie_type(value):
+    value = str(value or "").lower()
+    if "bool" in value: return "Boolean"
+    if "date" in value and "time" not in value: return "Date"
+    if "time" in value or "timestamp" in value: return "DateTimeTz"
+    if any(x in value for x in ("int", "count")): return "Integer"
+    if any(x in value for x in ("decimal", "numeric", "amount", "float", "double")): return "Decimal"
+    return "String"
+
+
+def ossie_document(model):
+    """Export Apache Ossie 0.3.0.dev0 core semantics plus round-trip extensions."""
+    datasets = []
+    for item in model.get("models", []):
+        metadata = item.get("metadata", {})
+        fields = [{"name": column, "expression": {"sql": column}, "datatype": _ossie_type(column), "dimension": {"is_time": "date" in column.lower() or "time" in column.lower()}} for column in item.get("columns", [])]
+        dataset = {"name": item["id"], "source": item.get("table", item["id"]), "fields": fields}
+        if item.get("grain"): dataset["primary_key"] = [item["grain"]]
+        if metadata.get("description"): dataset["description"] = metadata["description"]
+        datasets.append(dataset)
+    relationships = []
+    for item in model.get("relationships", []):
+        left_dataset, left_column = item["from"].split(".", 1); right_dataset, right_column = item["to"].split(".", 1)
+        relationships.append({"name": item["id"], "from": left_dataset, "to": right_dataset, "from_columns": [left_column], "to_columns": [right_column]})
+    metrics = [{"name": item["id"], "expression": {"sql": item.get("expression", "")}, "description": item.get("metadata", {}).get("business_definition", item.get("label", item["id"])), "datatype": "Decimal", "ai_context": {"synonyms": [item.get("label", item["id"])]}} for item in model.get("metrics", [])]
+    return {"version": "0.3.0.dev0", "name": model.get("model_id", "semantic_model"), "description": model.get("title", ""), "ai_context": {"instructions": "Use governed metrics; do not expose raw PII."}, "datasets": datasets, "relationships": relationships, "metrics": metrics, "nonportable_extensions": [{"vendor_name": "semantic-designer", "data": {"model": model.get("extensions", {}), "governance": model.get("governance", {}), "source_catalog": model.get("source_catalog", {})}}]}
+
+
+def sml_repository(model):
+    """Export an AtScale-SML-shaped object collection with custom expressions preserved."""
+    objects = []
+    for item in model.get("models", []):
+        objects.append({"unique_name": item["id"], "object_type": "dataset", "table": item.get("table", item["id"]), "grain": item.get("grain"), "columns": item.get("columns", [])})
+    for item in model.get("metrics", []):
+        expression = item.get("expression", "")
+        method = item.get("aggregation", "custom")
+        column = expression[expression.find("(") + 1:expression.rfind(")")] if "(" in expression and ")" in expression else expression
+        objects.append({"unique_name": item["id"], "object_type": "metric", "label": item.get("label", item["id"]), "dataset": item.get("model"), "calculation_method": method, "column": column, "expression": expression, "nonportable_extensions": {"semantic_designer": item.get("metadata", {})}})
+    for view in model.get("views", []):
+        objects.append({"unique_name": view["id"], "object_type": "model", "label": view.get("label", view["id"]), "datasets": view.get("models", []), "metrics": view.get("metrics", []), "relationships": model.get("relationships", [])})
+    return objects
+
+
+def write_sml_repository(model, path):
+    root = Path(path); root.mkdir(parents=True, exist_ok=True)
+    for item in sml_repository(model):
+        filename = item["unique_name"].replace("/", "_").replace(" ", "_") + "." + item["object_type"] + ".yaml"
+        (root / filename).write_text(json.dumps(item, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 QUERY_OPERATORS = {"eq": "=", "neq": "<>", "gt": ">", "gte": ">=", "lt": "<", "lte": "<=", "in": "IN"}
 MAX_QUERY_LIMIT = 5000
 
@@ -165,7 +299,7 @@ def validate(model):
             errors.append("relationship requires id, from and to")
         if r.get("from") not in model_cols: errors.append(f"relationship from column not found: {r.get('from')}")
         if r.get("to") not in model_cols: errors.append(f"relationship to column not found: {r.get('to')}")
-        if r.get("type") not in {"one_to_one", "one_to_many", "many_to_one"}:
+        if r.get("type") not in {"one_to_one", "one_to_many", "many_to_one", "many_to_many"}:
             errors.append(f"unsupported relationship type: {r.get('type')}")
     metric_ids = set()
     for m in model.get("metrics", []):
