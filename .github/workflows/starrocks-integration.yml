@@ -1,0 +1,19 @@
+name: StarRocks integration
+
+on:
+  pull_request:
+    paths:
+      - "semantic-designer/**"
+      - ".github/workflows/starrocks-integration.yml"
+  push:
+    branches: [main]
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run StarRocks end-to-end test
+        working-directory: semantic-designer
+        run: bash integrations/starrocks/run.sh
