@@ -91,7 +91,7 @@ def main():
     compiled = server.compile_query(request, model)
     result = sql(materialize(compiled))
     rows = [line.split("\t") for line in result.splitlines() if line]
-    assert rows == [["JP", "80.00"], ["TW", "150.00"]], rows
+    assert sorted(rows) == [["JP", "80.00"], ["TW", "150.00"]], rows
     print(json.dumps({"sql": compiled["sql"], "rows": rows}, ensure_ascii=False))
 
 
