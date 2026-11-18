@@ -75,7 +75,7 @@ def main():
     model = server.read_model(ROOT / "model.yaml")
     request = {
         "model": {"name": "sales", "release": "v1"},
-        "principal": {"subject": "integration-test", "authn": "service"},
+        "principal": {"subject": "integration-test", "authn": "internal"},
         "select": [
             {"kind": "dimension", "name": "customers.region"},
             {"kind": "measure", "name": "net_sales"},
